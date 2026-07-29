@@ -6,6 +6,7 @@ import { CaptionEvent } from '../../../lib/caption-types';
 export default function AudiencePage({ params }: { params: { sessionId: string } }) {
   const { sessionId } = params;
   const [captions, setCaptions] = useState<CaptionEvent[]>([]);
+  const [partial, setPartial] = useState('');
   const [status, setStatus] = useState('Connecting...');
 
   useEffect(() => {
@@ -31,6 +32,9 @@ export default function AudiencePage({ params }: { params: { sessionId: string }
         const caption: CaptionEvent = JSON.parse(event.data);
         if (caption.type === 'final') {
           setCaptions(prev => [...prev, caption]);
+          setPartial('');
+        } else if (caption.type === 'partial') {
+          setPartial(caption.text);
         }
       } catch (e) {
         console.error('Parse error', e);
@@ -53,7 +57,12 @@ export default function AudiencePage({ params }: { params: { sessionId: string }
             {c.text}
           </div>
         ))}
-        {captions.length === 0 && <p style={{ color: 'gray' }}>Waiting for speaker to start...</p>}
+        {partial && (
+          <div style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', fontSize: '1.2rem', color: 'gray' }}>
+            {partial}
+          </div>
+        )}
+        {captions.length === 0 && !partial && <p style={{ color: 'gray' }}>Waiting for speaker to start...</p>}
       </div>
     </div>
   );

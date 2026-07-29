@@ -6,6 +6,7 @@ import { CaptionEvent } from '../../../lib/caption-types';
 export default function DisplayPage({ params }: { params: { sessionId: string } }) {
   const { sessionId } = params;
   const [captions, setCaptions] = useState<CaptionEvent[]>([]);
+  const [partial, setPartial] = useState('');
 
   useEffect(() => {
     const apiUrl = `http://${window.location.hostname}:4000`;
@@ -29,6 +30,9 @@ export default function DisplayPage({ params }: { params: { sessionId: string } 
             const newCaptions = [...prev, caption];
             return newCaptions.slice(-3); // Keep only last 3 captions
           });
+          setPartial('');
+        } else if (caption.type === 'partial') {
+          setPartial(caption.text);
         }
       } catch (e) {
         console.error(e);
@@ -40,7 +44,11 @@ export default function DisplayPage({ params }: { params: { sessionId: string } 
 
   return (
     <div style={{ 
-      height: '100vh', 
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       background: 'black', 
       color: 'white', 
       display: 'flex', 
@@ -61,6 +69,16 @@ export default function DisplayPage({ params }: { params: { sessionId: string } 
             {c.text}
           </p>
         ))}
+        {partial && (
+          <p style={{ 
+            fontSize: '4vw', 
+            fontWeight: 'bold', 
+            margin: '1rem 0',
+            opacity: 0.5 
+          }}>
+            {partial}
+          </p>
+        )}
       </div>
     </div>
   );

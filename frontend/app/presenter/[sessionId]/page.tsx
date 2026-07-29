@@ -74,7 +74,17 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
       speechmaticsWs.current.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.message === 'AddPartialTranslation') {
-          setPartialCaption(msg.results[0]?.content || '');
+          const text = msg.results[0]?.content || '';
+          setPartialCaption(text);
+          if (backendWs.current?.readyState === WebSocket.OPEN && text) {
+            backendWs.current.send(JSON.stringify({
+              sessionId,
+              type: 'partial',
+              language: 'vi',
+              text,
+              timestamp: Date.now()
+            } as CaptionEvent));
+          }
         } else if (msg.message === 'AddTranslation') {
           const text = msg.results[0]?.content;
           if (text) {
