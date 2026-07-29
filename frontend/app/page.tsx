@@ -13,7 +13,10 @@ export default function HomePage() {
   const createSession = async () => {
     setLoading(true);
     try {
-      const apiUrl = `http://${window.location.hostname}:4000`;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost') 
+        ? process.env.NEXT_PUBLIC_API_URL 
+        : `http://${window.location.hostname}:4000`;
+        
       const res = await fetch(`${apiUrl}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

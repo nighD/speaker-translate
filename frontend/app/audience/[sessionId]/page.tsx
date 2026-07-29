@@ -10,7 +10,9 @@ export default function AudiencePage({ params }: { params: { sessionId: string }
   const [status, setStatus] = useState('Connecting...');
 
   useEffect(() => {
-    const apiUrl = `http://${window.location.hostname}:4000`;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost') 
+      ? process.env.NEXT_PUBLIC_API_URL 
+      : `http://${window.location.hostname}:4000`;
     
     // Load historical captions
     fetch(`${apiUrl}/api/sessions/${sessionId}/captions`)
@@ -21,7 +23,11 @@ export default function AudiencePage({ params }: { params: { sessionId: string }
       .catch(console.error);
 
     // Connect to websocket for live captions
-    const wsUrl = `ws://${window.location.hostname}:4000/audience?sessionId=${sessionId}`;
+    const wsBaseUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL && !process.env.NEXT_PUBLIC_WEBSOCKET_URL.includes('localhost')
+      ? process.env.NEXT_PUBLIC_WEBSOCKET_URL
+      : `ws://${window.location.hostname}:4000`;
+      
+    const wsUrl = `${wsBaseUrl}/audience?sessionId=${sessionId}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => setStatus('Connected to live translation');

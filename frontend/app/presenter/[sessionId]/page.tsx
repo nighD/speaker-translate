@@ -22,7 +22,11 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
     });
     
     // Connect to backend WS for broadcasting
-    const wsUrl = `ws://${window.location.hostname}:4000/presenter?sessionId=${sessionId}`;
+    const wsBaseUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL && !process.env.NEXT_PUBLIC_WEBSOCKET_URL.includes('localhost')
+      ? process.env.NEXT_PUBLIC_WEBSOCKET_URL
+      : `ws://${window.location.hostname}:4000`;
+      
+    const wsUrl = `${wsBaseUrl}/presenter?sessionId=${sessionId}`;
     backendWs.current = new WebSocket(wsUrl);
     
     return () => {
@@ -33,7 +37,10 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
   const startTranslation = async () => {
     try {
       // 1. Get temporary Speechmatics Token from Backend
-      const apiUrl = `http://${window.location.hostname}:4000`;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost') 
+        ? process.env.NEXT_PUBLIC_API_URL 
+        : `http://${window.location.hostname}:4000`;
+        
       const res = await fetch(`${apiUrl}/api/speechmatics/token`, { method: 'POST' });
       const { token, endpoint } = await res.json();
 
