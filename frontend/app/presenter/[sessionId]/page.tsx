@@ -57,14 +57,14 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         speechmaticsWs.current?.send(JSON.stringify({
           message: "StartRecognition",
           audio_format: { type: "raw", encoding: "pcm_f32le", sample_rate: 16000 },
-          transcription_config: { language: "en", enable_partials: true, max_delay: 2 },
+          transcription_config: { language: "en", enable_partials: true, max_delay: 1 },
           translation_config: { target_languages: ["vi"], enable_partials: true }
         }));
 
         // Send audio chunks
         audioContext.current = new AudioContext({ sampleRate: 16000 });
         const source = audioContext.current.createMediaStreamSource(stream);
-        const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
+        const processor = audioContext.current.createScriptProcessor(1024, 1, 1);
         
         processor.onaudioprocess = (e) => {
           if (speechmaticsWs.current?.readyState === WebSocket.OPEN) {
