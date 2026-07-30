@@ -34,7 +34,7 @@ export default function DisplayPage({ params }: { params: { sessionId: string } 
         if (caption.type === 'final') {
           setCaptions(prev => {
             const newCaptions = [...prev, caption];
-            return newCaptions.slice(-3); // Keep only last 3 captions
+            return newCaptions.slice(-10); // Keep last 10 for connected paragraph
           });
           setPartial('');
         } else if (caption.type === 'partial') {
@@ -65,26 +65,23 @@ export default function DisplayPage({ params }: { params: { sessionId: string } 
       fontFamily: 'sans-serif'
     }}>
       <div style={{ width: '100%', maxWidth: '1200px', textAlign: 'center' }}>
-        {captions.map((c, i) => (
-          <p key={i} style={{ 
-            fontSize: '4vw', 
-            fontWeight: 'bold', 
-            margin: '1rem 0',
-            opacity: i === captions.length - 1 ? 1 : 0.5 
-          }}>
-            {c.text}
-          </p>
-        ))}
-        {partial && (
-          <p style={{ 
-            fontSize: '4vw', 
-            fontWeight: 'bold', 
-            margin: '1rem 0',
-            opacity: 0.5 
-          }}>
-            {partial}
-          </p>
-        )}
+        <p style={{ 
+          fontSize: '3.5vw', 
+          fontWeight: 'bold', 
+          lineHeight: '1.5',
+          margin: 0,
+          textAlign: 'left'
+        }}>
+          {captions.map(c => c.text).join(' ')}
+          {partial && (
+            <span style={{ 
+              opacity: 0.5, 
+              marginLeft: captions.length > 0 ? '1vw' : '0'
+            }}>
+              {partial}
+            </span>
+          )}
+        </p>
       </div>
     </div>
   );

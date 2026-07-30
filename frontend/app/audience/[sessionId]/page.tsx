@@ -58,17 +58,15 @@ export default function AudiencePage({ params }: { params: { sessionId: string }
       </div>
       
       <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {captions.map((c, i) => (
-          <div key={i} style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', fontSize: '1.2rem' }}>
-            {c.text}
-          </div>
-        ))}
-        {partial && (
-          <div style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', fontSize: '1.2rem', color: 'gray' }}>
-            {partial}
-          </div>
-        )}
-        {captions.length === 0 && !partial && <p style={{ color: 'gray' }}>Waiting for speaker to start...</p>}
+        <div style={{ background: '#f9f9f9', padding: '1.5rem', borderRadius: '8px', fontSize: '1.2rem', lineHeight: '1.8' }}>
+          {captions.length === 0 && !partial && <span style={{ color: 'gray' }}>Waiting for speaker to start...</span>}
+          <span>{captions.map(c => c.text).join(' ')}</span>
+          {partial && (
+            <span style={{ color: 'gray', marginLeft: captions.length > 0 ? '0.5rem' : '0' }}>
+              {partial}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
