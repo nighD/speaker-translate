@@ -10,6 +10,7 @@ export default function FEOnlyPage() {
   const [sourceLang, setSourceLang] = useState('en');
   const [targetLang, setTargetLang] = useState('vi');
   const [status, setStatus] = useState('Disconnected');
+  const [showOriginal, setShowOriginal] = useState(true);
 
   const speechmaticsWs = useRef<WebSocket | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
@@ -35,8 +36,10 @@ export default function FEOnlyPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isTranslating]);
 
+  const startTranslation = async (overrideSource?: string, overrideTarget?: string) => {
+    const sLang = typeof overrideSource === 'string' ? overrideSource : sourceLang;
+    const tLang = typeof overrideTarget === 'string' ? overrideTarget : targetLang;
 
-  const startTranslation = async () => {
     if (!apiKey) {
       alert('Please enter your Speechmatics API Key or add NEXT_PUBLIC_SPEECHMATICS_API_KEY to .env');
       return;
@@ -76,8 +79,8 @@ export default function FEOnlyPage() {
         const config = {
           message: "StartRecognition",
           audio_format: { type: "raw", encoding: "pcm_f32le", sample_rate: 16000 },
-          transcription_config: { language: sourceLang, enable_partials: true, max_delay: 1 },
-          translation_config: { target_languages: [targetLang], enable_partials: true }
+          transcription_config: { language: sLang, enable_partials: true, max_delay: 1 },
+          translation_config: { target_languages: [tLang], enable_partials: true }
         };
         
         speechmaticsWs.current?.send(JSON.stringify(config));
@@ -151,6 +154,25 @@ export default function FEOnlyPage() {
     setStatus('Disconnected');
   };
 
+  const reconnectTranslation = (newSource: string, newTarget: string) => {
+    if (speechmaticsWs.current) {
+      speechmaticsWs.current.onclose = null; // Prevent onclose from triggering stopTranslation
+      speechmaticsWs.current.onerror = null;
+      speechmaticsWs.current.close();
+    }
+    mediaStream.current?.getTracks().forEach(t => t.stop());
+    if (audioContext.current?.state !== 'closed') {
+        audioContext.current?.close().catch(() => {});
+    }
+    setPartialCaption('');
+    setFinalCaptions([]);
+    currentSourceText.current = '';
+    
+    setTimeout(() => {
+      startTranslation(newSource, newTarget);
+    }, 500);
+  };
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -207,7 +229,7 @@ export default function FEOnlyPage() {
             </div>
 
             <button 
-              onClick={startTranslation}
+              onClick={() => startTranslation()}
               style={{ 
                 padding: '1rem 2rem', 
                 background: '#2563eb', 
@@ -230,8 +252,55 @@ export default function FEOnlyPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '50%', animation: 'pulse 1.5s infinite' }} />
-                <span style={{ fontSize: '1rem', color: '#ef4444', fontWeight: 'bold' }}>LIVE</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginRight: '1rem' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '50%', animation: 'pulse 1.5s infinite' }} />
+                  <span style={{ fontSize: '1rem', color: '#ef4444', fontWeight: 'bold' }}>LIVE</span>
+                </div>
+                
+                <select 
+                  value={`${sourceLang}-${targetLang}`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    let newSource = 'en', newTarget = 'vi';
+                    if (val === 'vi-en') { newSource = 'vi'; newTarget = 'en'; }
+                    else if (val === 'en-vi') { newSource = 'en'; newTarget = 'vi'; }
+                    
+                    setSourceLang(newSource);
+                    setTargetLang(newTarget);
+                    
+                    if (isTranslating) {
+                      reconnectTranslation(newSource, newTarget);
+                    }
+                  }}
+                  style={{ 
+                    padding: '0.5rem 1rem', 
+                    background: '#1f1f1f', 
+                    color: 'white', 
+                    border: '1px solid #333', 
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="vi-en">Tiếng Việt &rarr; English</option>
+                  <option value="en-vi">English &rarr; Tiếng Việt</option>
+                </select>
+
+                <button
+                  onClick={() => setShowOriginal(!showOriginal)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: '#1f1f1f',
+                    color: 'white',
+                    border: '1px solid #333',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {showOriginal ? 'Ẩn bản gốc' : 'Hiện bản gốc'}
+                </button>
               </div>
               <span style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic' }}>Press ESC to stop</span>
             </div>
@@ -251,14 +320,14 @@ export default function FEOnlyPage() {
               {/* Keep only the last 4 final captions to leave room for the partial caption (max 5 items) */}
               {finalCaptions.slice(-4).map((c, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'center', animation: 'fadeIn 0.3s ease-in' }}>
-                  <div style={{ color: '#9ca3af', fontSize: '1.5rem', fontWeight: 500, opacity: 0.8 }}>{c.source}</div>
+                  {showOriginal && <div style={{ color: '#9ca3af', fontSize: '1.5rem', fontWeight: 500, opacity: 0.8 }}>{c.source}</div>}
                   <div style={{ color: 'white', fontSize: '2.5rem', fontWeight: 'bold', letterSpacing: '-0.02em' }}>{c.translated}</div>
                 </div>
               ))}
               
               {partialCaption && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'center', animation: 'fadeIn 0.1s ease-in' }}>
-                  <div style={{ color: '#9ca3af', fontSize: '1.5rem', fontWeight: 500, opacity: 0.8 }}>{currentSourceText.current}</div>
+                  {showOriginal && <div style={{ color: '#9ca3af', fontSize: '1.5rem', fontWeight: 500, opacity: 0.8 }}>{currentSourceText.current}</div>}
                   <div style={{ color: '#60a5fa', fontSize: '2.5rem', fontWeight: 'bold', letterSpacing: '-0.02em' }}>{partialCaption}</div>
                 </div>
               )}
