@@ -138,7 +138,7 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
             }
           }
         } else if (msg.message === 'AddPartialTranscript' && translationMode === 'mymemory') {
-          const text = msg.results[0]?.content;
+          const text = msg.metadata?.transcript;
           if (text) {
             const now = Date.now();
             if (now - lastMyMemoryCall.current > 500) {
@@ -147,7 +147,7 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
             }
           }
         } else if (msg.message === 'AddTranscript' && translationMode === 'mymemory') {
-          const text = msg.results[0]?.content;
+          const text = msg.metadata?.transcript;
           if (text) {
             translateWithMyMemory(text, 'final');
           }
