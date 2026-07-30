@@ -135,9 +135,10 @@ export default function FEOnlyPage() {
         stopTranslation();
       };
 
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      alert(e.message || 'Failed to start translation');
+      const errorMessage = e instanceof Error ? e.message : 'Failed to start translation';
+      alert(errorMessage);
       setStatus('Disconnected');
     }
   };
