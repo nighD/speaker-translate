@@ -11,6 +11,7 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
   const [myMemoryEmail, setMyMemoryEmail] = useState<string>('');
   
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isCalibrating, setIsCalibrating] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [partialCaption, setPartialCaption] = useState('');
   const [finalCaptions, setFinalCaptions] = useState<string[]>([]);
@@ -113,15 +114,33 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         
         speechmaticsWs.current?.send(JSON.stringify(config));
 
-        // Send audio chunks — with VAD energy gate to drop silent frames
+        // === Adaptive VAD Setup ===
+        // AirPods mics are omnidirectional — a fixed threshold can't separate
+        // your voice from nearby speakers. Instead, we:
+        //   1. Measure ambient noise floor for 1.5s (calibration phase)
+        //   2. Set threshold = noiseFloor × VOICE_RATIO (your voice near the mic
+        //      is much louder than a distant speaker)
+        //   3. Hold "speaking" state for 300ms after energy drops (avoids clipping)
         audioContext.current = new AudioContext({ sampleRate: 16000 });
         const source = audioContext.current.createMediaStreamSource(stream);
-        // Use 4096 buffer for a ~256ms window — smoother VAD detection
         const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
 
-        // RMS energy threshold — raised to 0.03 for AirPods which are more sensitive
-        // and can pick up ambient voices at the lower 0.01 level.
-        const SILENCE_THRESHOLD = 0.03;
+        const CALIBRATION_MS = 1500;  // measure noise for 1.5s before sending anything
+        const VOICE_RATIO    = 4.0;   // your voice must be 4× louder than ambient noise
+        const HOLD_MS        = 300;   // keep "speaking" for 300ms after energy drops
+
+        let noiseFloor        = 0.01; // safe starting default
+        let dynamicThreshold  = 0.04; // updated after calibration
+        let calibrating       = true;
+        let calibrationSamples: number[] = [];
+        const calibrationStart = Date.now();
+
+        let speakingHoldTimer: ReturnType<typeof setTimeout> | null = null;
+        let currentlySpeaking = false;
+
+        // Show "Calibrating..." in the UI during calibration
+        setIsSpeaking(false);
+        setIsCalibrating(true);
 
         processor.onaudioprocess = (e) => {
           if (speechmaticsWs.current?.readyState !== WebSocket.OPEN) return;
@@ -135,19 +154,53 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
           }
           const rms = Math.sqrt(sum / audioData.length);
 
-          // Only send frames with meaningful audio energy
-          const speaking = rms >= SILENCE_THRESHOLD;
-          setIsSpeaking(speaking);
-          if (speaking) {
+          // === Phase 1: Calibration ===
+          if (calibrating) {
+            calibrationSamples.push(rms);
+            if (Date.now() - calibrationStart >= CALIBRATION_MS) {
+              // Compute median RMS as the noise floor (robust against spikes)
+              const sorted = [...calibrationSamples].sort((a, b) => a - b);
+              noiseFloor       = sorted[Math.floor(sorted.length / 2)];
+              dynamicThreshold = noiseFloor * VOICE_RATIO;
+              calibrating      = false;
+              setIsCalibrating(false);
+              console.log(`[VAD] Calibration done. noiseFloor=${noiseFloor.toFixed(4)}, threshold=${dynamicThreshold.toFixed(4)}`);
+            }
+            return; // don't send during calibration
+          }
+
+          // === Phase 2: Live VAD with hold timer ===
+          const voiceDetected = rms >= dynamicThreshold;
+
+          if (voiceDetected) {
+            // Clear any pending silence timer — we're still speaking
+            if (speakingHoldTimer) {
+              clearTimeout(speakingHoldTimer);
+              speakingHoldTimer = null;
+            }
+            if (!currentlySpeaking) {
+              currentlySpeaking = true;
+              setIsSpeaking(true);
+            }
+            speechmaticsWs.current.send(audioData);
+          } else if (currentlySpeaking && !speakingHoldTimer) {
+            // Energy dropped — hold for HOLD_MS before marking as silent
+            speakingHoldTimer = setTimeout(() => {
+              currentlySpeaking = false;
+              speakingHoldTimer = null;
+              setIsSpeaking(false);
+            }, HOLD_MS);
+            // Still send audio during hold period (catches trailing consonants)
+            speechmaticsWs.current.send(audioData);
+          } else if (currentlySpeaking) {
+            // In hold period — keep sending
             speechmaticsWs.current.send(audioData);
           }
         };
 
         source.connect(processor);
-        // NOTE: Do NOT connect processor to destination — that would play mic audio
-        // back through the speakers and create an echo/feedback loop.
-        // processor.connect(audioContext.current.destination); // ← removed
         setIsTranslating(true);
+
       };
 
       speechmaticsWs.current.onmessage = (event) => {
@@ -200,6 +253,8 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
     mediaStream.current?.getTracks().forEach(t => t.stop());
     audioContext.current?.close();
     setIsTranslating(false);
+    setIsCalibrating(false);
+    setIsSpeaking(false);
   };
 
   return (
@@ -269,12 +324,12 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
                   width: 12,
                   height: 12,
                   borderRadius: '50%',
-                  background: isSpeaking ? '#22c55e' : '#d1d5db',
+                  background: isCalibrating ? '#f59e0b' : isSpeaking ? '#22c55e' : '#d1d5db',
                   transition: 'background 0.1s',
-                  boxShadow: isSpeaking ? '0 0 6px #22c55e' : 'none'
+                  boxShadow: isCalibrating ? '0 0 6px #f59e0b' : isSpeaking ? '0 0 6px #22c55e' : 'none'
                 }} />
-                <span style={{ color: isSpeaking ? '#22c55e' : '#9ca3af' }}>
-                  {isSpeaking ? 'Voice detected' : 'Listening...'}
+                <span style={{ color: isCalibrating ? '#f59e0b' : isSpeaking ? '#22c55e' : '#9ca3af' }}>
+                  {isCalibrating ? 'Calibrating mic… stay silent for 1.5s' : isSpeaking ? 'Voice detected' : 'Listening...'}
                 </span>
               </div>
             </>
