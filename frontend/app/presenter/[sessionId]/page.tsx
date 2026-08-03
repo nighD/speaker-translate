@@ -132,7 +132,7 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         let noiseFloor        = 0.01; // safe starting default
         let dynamicThreshold  = 0.04; // updated after calibration
         let calibrating       = true;
-        let calibrationSamples: number[] = [];
+        const calibrationSamples: number[] = [];
         const calibrationStart = Date.now();
 
         let speakingHoldTimer: ReturnType<typeof setTimeout> | null = null;
