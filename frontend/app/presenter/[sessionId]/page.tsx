@@ -11,6 +11,7 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
   const [myMemoryEmail, setMyMemoryEmail] = useState<string>('');
   
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [partialCaption, setPartialCaption] = useState('');
   const [finalCaptions, setFinalCaptions] = useState<string[]>([]);
   
@@ -76,9 +77,16 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
       const res = await fetch(`${apiUrl}/api/speechmatics/token`, { method: 'POST' });
       const { token, endpoint } = await res.json();
 
-      // 2. Setup Microphone
+      // 2. Setup Microphone — enable browser-level noise processing
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: selectedDevice ? { exact: selectedDevice } : undefined }
+        audio: {
+          deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
+          noiseSuppression: true,      // browser removes background noise
+          echoCancellation: true,       // removes mic echo
+          autoGainControl: true,        // normalises volume levels
+          sampleRate: 16000,
+          channelCount: 1,
+        }
       });
       mediaStream.current = stream;
 
@@ -98,14 +106,31 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         
         speechmaticsWs.current?.send(JSON.stringify(config));
 
-        // Send audio chunks
+        // Send audio chunks — with VAD energy gate to drop silent frames
         audioContext.current = new AudioContext({ sampleRate: 16000 });
         const source = audioContext.current.createMediaStreamSource(stream);
-        const processor = audioContext.current.createScriptProcessor(1024, 1, 1);
-        
+        // Use 4096 buffer for a ~256ms window — smoother VAD detection
+        const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
+
+        // RMS energy threshold: below this level = silence/noise, skip sending
+        const SILENCE_THRESHOLD = 0.01;
+
         processor.onaudioprocess = (e) => {
-          if (speechmaticsWs.current?.readyState === WebSocket.OPEN) {
-            const audioData = e.inputBuffer.getChannelData(0);
+          if (speechmaticsWs.current?.readyState !== WebSocket.OPEN) return;
+
+          const audioData = e.inputBuffer.getChannelData(0);
+
+          // Compute RMS energy of this frame
+          let sum = 0;
+          for (let i = 0; i < audioData.length; i++) {
+            sum += audioData[i] * audioData[i];
+          }
+          const rms = Math.sqrt(sum / audioData.length);
+
+          // Only send frames with meaningful audio energy
+          const speaking = rms >= SILENCE_THRESHOLD;
+          setIsSpeaking(speaking);
+          if (speaking) {
             speechmaticsWs.current.send(audioData);
           }
         };
@@ -209,15 +234,30 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
           </div>
         )}
 
-        <div style={{ marginTop: '1.5rem' }}>
+        <div style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           {!isTranslating ? (
             <button onClick={startTranslation} style={{ padding: '0.75rem 1.5rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
               Start Translation
             </button>
           ) : (
-            <button onClick={stopTranslation} style={{ padding: '0.75rem 1.5rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-              Stop Translation
-            </button>
+            <>
+              <button onClick={stopTranslation} style={{ padding: '0.75rem 1.5rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Stop Translation
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
+                <div style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  background: isSpeaking ? '#22c55e' : '#d1d5db',
+                  transition: 'background 0.1s',
+                  boxShadow: isSpeaking ? '0 0 6px #22c55e' : 'none'
+                }} />
+                <span style={{ color: isSpeaking ? '#22c55e' : '#9ca3af' }}>
+                  {isSpeaking ? 'Voice detected' : 'Listening...'}
+                </span>
+              </div>
+            </>
           )}
         </div>
       </div>
