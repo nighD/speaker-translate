@@ -21,10 +21,15 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
   const mediaStream = useRef<MediaStream | null>(null);
   const lastMyMemoryCall = useRef<number>(0);
 
+  // Re-enumerate devices once (to get labels after permission is granted)
+  const refreshDevices = async () => {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    setDevices(devs.filter(d => d.kind === 'audioinput'));
+  };
+
   useEffect(() => {
-    navigator.mediaDevices.enumerateDevices().then(devs => {
-      setDevices(devs.filter(d => d.kind === 'audioinput'));
-    });
+    // Initial enumeration — labels may be empty until mic permission is granted
+    refreshDevices();
     
     // Connect to backend WS for broadcasting
     const wsBaseUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL && !process.env.NEXT_PUBLIC_WEBSOCKET_URL.includes('localhost')
@@ -89,6 +94,8 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         }
       });
       mediaStream.current = stream;
+      // Re-enumerate now that mic permission is granted — so AirPods label appears
+      await refreshDevices();
 
       // 3. Connect to Speechmatics
       speechmaticsWs.current = new WebSocket(`${endpoint}?jwt=${token}`);
@@ -112,8 +119,9 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         // Use 4096 buffer for a ~256ms window — smoother VAD detection
         const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
 
-        // RMS energy threshold: below this level = silence/noise, skip sending
-        const SILENCE_THRESHOLD = 0.01;
+        // RMS energy threshold — raised to 0.03 for AirPods which are more sensitive
+        // and can pick up ambient voices at the lower 0.01 level.
+        const SILENCE_THRESHOLD = 0.03;
 
         processor.onaudioprocess = (e) => {
           if (speechmaticsWs.current?.readyState !== WebSocket.OPEN) return;
@@ -136,7 +144,9 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
         };
 
         source.connect(processor);
-        processor.connect(audioContext.current.destination);
+        // NOTE: Do NOT connect processor to destination — that would play mic audio
+        // back through the speakers and create an echo/feedback loop.
+        // processor.connect(audioContext.current.destination); // ← removed
         setIsTranslating(true);
       };
 
@@ -199,10 +209,20 @@ export default function PresenterPage({ params }: { params: { sessionId: string 
       <div style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Microphone:</label>
-          <select value={selectedDevice} onChange={e => setSelectedDevice(e.target.value)} style={{ padding: '0.5rem', width: '100%', maxWidth: '400px' }}>
-            <option value="">Default Microphone</option>
-            {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Mic ' + d.deviceId}</option>)}
-          </select>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <select value={selectedDevice} onChange={e => setSelectedDevice(e.target.value)} style={{ padding: '0.5rem', flex: 1, maxWidth: '360px' }}>
+              <option value="">Default Microphone</option>
+              {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Mic ' + d.deviceId}</option>)}
+            </select>
+            <button
+              onClick={refreshDevices}
+              title="Refresh device list (needed after connecting AirPods)"
+              style={{ padding: '0.5rem 0.75rem', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', background: 'white', fontSize: '1rem' }}
+            >🔄</button>
+          </div>
+          <p style={{ fontSize: '0.78rem', color: '#666', marginTop: '0.3rem' }}>
+            If you just connected AirPods, click 🔄 to refresh the list and select <em>AirPods Microphone</em>.
+          </p>
         </div>
         
         <div style={{ marginBottom: '1rem' }}>
